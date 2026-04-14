@@ -1,0 +1,13 @@
+services:
+  wxbot:
+    image: wxbot:latest
+    container_name: wxbot
+    restart: unless-stopped
+    ports:
+      - "4455:4455"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./logs:/app/logs
+      - ./temp_media:/app/temp_media
+    environment:
+      - TZ=Asia/Shanghai

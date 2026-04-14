@@ -1,0 +1,96 @@
+# wxbot 配置文件示例
+# 企业微信机器人配置
+
+# 企业微信基础配置
+wechat:
+  corp_id: "YOUR_CORP_ID"  # 企业ID
+  # 代理配置（可选，按前缀识别 http/s5）
+  proxy: "http://127.0.0.1:7890"
+  debug: false
+
+  # 消息去重配置
+  enable_msg_dedup: true          # 是否启用消息去重（推荐开启）
+  msg_dedup_ttl: 30             # 消息去重标记有效期（秒）
+  
+  # OAuth网页授权配置
+  oauth:
+    # 回调域名配置（必须与部署域名一致）
+    callback_domain: "https://your-domain.com"  # 替换为您的实际域名
+    # 支持多个回调域名（可选）
+    callback_domains:
+      - "https://your-domain.com"
+      - "https://www.your-domain.com"
+    
+  # 应用配置
+  agents:
+    "1000001":
+      name: "定时任务"
+      agent_id: 1000001  # 应用ID
+      corp_secret: "YOUR_CORP_SECRET"  # 应用Secret
+      token: "YOUR_TOKEN"  # 与企业微信后台设置一致的Token
+      encoding_aes_key: "YOUR_ENCODING_AES_KEY"  # 企业微信后台生成的EncodingAESKey
+      plugins: ["schedule_manager"]  # 允许的插件
+      # 用户信息增强配置
+      fetch_user_info: false
+      include_time_info: false
+      
+      # OAuth配置（可选，如果不配置则使用全局配置）
+      oauth:
+        callback_domain: "https://your-domain.com"  # 应用特定的回调域名
+    
+    "1000002":
+      agent_id: 1000002  # 应用ID
+      corp_secret: "YOUR_CORP_SECRET"
+      token: "YOUR_TOKEN"
+      encoding_aes_key: "YOUR_ENCODING_AES_KEY"
+      plugins: ["ai_chat_demo"]
+      # 用户信息增强配置
+      fetch_user_info: true
+      include_time_info: true
+      
+      # OAuth配置
+      oauth:
+        callback_domain: "https://your-domain.com"
+
+# API密钥配置
+api_keys:
+  dashscope: "YOUR_DASHSCOPE_API_KEY"  # 阿里云千问API Key
+  ark: "YOUR_ARK_API_KEY"  # 火山引擎API Key（可选）
+
+# Redis配置
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: "YOUR_REDIS_PASSWORD"  # 可选
+  db: 0
+
+# 部署配置
+deployment:
+  port: 4455  # 服务端口
+  # 域名配置（用于OAuth回调）
+  domain: "your-domain.com"  # 您的部署域名
+
+# 日志配置
+logging:
+  level: "INFO"  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  console: true  # 是否启用控制台输出
+  file: true     # 是否启用文件输出
+  max_size: "10MB"  # 单个日志文件最大大小
+  backup_count: 5   # 保留的日志文件数量
+
+# 定时任务配置
+scheduler:
+  # 测试模式（每分钟执行一次，仅调试用）
+  test: false
+  
+  # 任务配置
+  tasks:
+    demo:
+      time: "09:00"  # 执行时间
+      day_of_week: "*"  # 每天；可填 [1,2,3,4,5] 表示工作日
+      users: ["user1", "user2"]
+    today_60s:
+      time: "09:50"  # 执行时间
+      day_of_week: "*"  # 每天；可填 [1,2,3,4,5] 表示工作日
+      users: ["user1", "user2"]
+  

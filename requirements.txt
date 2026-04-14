@@ -1,0 +1,11 @@
+aiohttp==3.12.15
+aiohttp-socks==0.11.0
+APScheduler==3.11.0
+fastapi==0.135.2
+openai==2.30.0
+pycryptodome==3.23.0
+pydantic==2.12.5
+PyYAML==6.0.2
+redis==7.4.0
+Requests==2.33.0
+uvicorn==0.42.0

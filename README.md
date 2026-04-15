@@ -6,7 +6,21 @@
 - 定时任务（创建/查看/修改/删除）
 - 企业微信 Webhook 回调处理
 
-> 说明：本项目完成于 2025 年，部分第三方接口、SDK 或平台配置项后续可能变化。如遇到不兼容，请优先参考对应平台最新官方文档调整。
+> 说明：本项目完成于 2025 年，部分第三方接口、SDK 或平台配置项后续可能变化。如遇到不兼容，请优先参考对应平台最新官方文档调整。  
+> 使用声明：使用、修改与分发本项目代码时，请遵守本项目采用的开源协议（LICENSE）。
+
+## 部分功能演示图片
+
+1、定时任务管理
+
+<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;gap:12px;align-items:flex-start;min-width:max-content;padding:6px 2px;">
+    <img src="./docs/images/preview/消息通知1.jpg" alt="项目演示图1" style="height:360px;max-width:100%;object-fit:contain;border-radius:8px;" loading="lazy" />
+    <img src="./docs/images/preview/消息通知2.jpg" alt="项目演示图2" style="height:360px;max-width:100%;object-fit:contain;border-radius:8px;" loading="lazy" />
+    <img src="./docs/images/preview/消息通知3.jpg" alt="项目演示图3" style="height:360px;max-width:100%;object-fit:contain;border-radius:8px;" loading="lazy" />
+  </div>
+</div>
+
 
 ## 项目详细介绍
 
@@ -90,3 +104,4 @@ docker compose down
 ## 开发文档
 
 - 自定义插件与定时任务开发：[`docs/自定义插件.md`](docs/自定义插件.md)
+- 插件分享仓库：[`wecom-bot-plugins`](https://github.com/XingHehy/wecom-bot-plugins)

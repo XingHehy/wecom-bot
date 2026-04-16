@@ -174,6 +174,11 @@ class Logger:
                     print(f"警告：无法创建统一文件日志处理器，错误：{e!r}")
                     print("将只使用控制台输出日志")
 
+            # 降噪：APScheduler 在 DEBUG/INFO 下会持续输出调度心跳日志
+            # 这里默认仅保留 WARNING/ERROR，避免刷屏；如需调试 APScheduler 可临时调回 DEBUG。
+            for name in ("apscheduler", "apscheduler.scheduler", "apscheduler.executors", "apscheduler.jobstores"):
+                logging.getLogger(name).setLevel(logging.WARNING)
+
             _GLOBAL_CONFIGURED = True
 
         # 命名 logger 不再单独挂 handler，全部向 root 汇聚

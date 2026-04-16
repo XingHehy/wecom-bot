@@ -68,12 +68,17 @@ def _get_wechat_proxy_mode() -> tuple[str, Optional[str]]:
     raise ValueError(f"不支持的 wechat.proxy 协议前缀: {WECHAT_PROXY}")
 
 
-def create_wechat_aiohttp_session() -> aiohttp.ClientSession:
+def create_wechat_aiohttp_session(*, no_proxy: bool = False) -> aiohttp.ClientSession:
     """
     创建企业微信请求专用 ClientSession。
     - http/https 代理：使用普通 TCPConnector，并在请求时传 proxy 参数
     - socks5 代理：使用 ProxyConnector（aiohttp-socks），请求时不传 proxy 参数
     """
+    if no_proxy:
+        # 明确禁用代理：用于 gettoken 等必须直连的接口
+        connector = TCPConnector(ssl=False)
+        return aiohttp.ClientSession(connector=connector)
+
     mode, proxy_url = _get_wechat_proxy_mode()
     if mode == "socks":
         if ProxyConnector is None:
@@ -125,6 +130,7 @@ async def _wechat_request(
     retry_delay: float = 1.0,
     logger_name: str = "wechat_http",
     append_debug_param: bool = True,
+    use_proxy: bool = True,
     request_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """
@@ -143,7 +149,7 @@ async def _wechat_request(
             async with session.request(
                 method,
                 request_url,
-                proxy=_get_request_proxy(),
+                proxy=_get_request_proxy() if use_proxy else None,
                 **kwargs,
             ) as resp:
                 return await handler(resp)
@@ -345,15 +351,18 @@ async def get_access_token(
         )
 
         try:
-            result = await _wechat_request(
-                session,
-                "GET",
-                url,
-                lambda resp: resp.json(content_type=None),
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-                logger_name="wechat_auth",
-            )
+            # gettoken 明确不走代理：即使全局配置了 socks/http 代理也要直连
+            async with create_wechat_aiohttp_session(no_proxy=True) as token_session:
+                result = await _wechat_request(
+                    token_session,
+                    "GET",
+                    url,
+                    lambda resp: resp.json(content_type=None),
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                    logger_name="wechat_auth",
+                    use_proxy=False,
+                )
         except Exception as e:
             logger.error(f"获取access_token异常，agent_id: {agent_id}, 错误: {str(e)}")
             return None

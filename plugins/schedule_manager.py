@@ -45,37 +45,32 @@ def send_scheduled_message(user_id: str, message: str, task_id: Optional[str] = 
     try:
         from core.wecom.enterprise_wechat import send_wechat_message
         import asyncio
+        async def _send():
+            await send_wechat_message(msg=message, agent_id="1000003", user=user_id)
+
         try:
-            # 尝试获取当前事件循环
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果当前循环正在运行，创建新线程来运行
-                import threading
-                def run_async():
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    try:
-                        new_loop.run_until_complete(send_wechat_message(msg=message, agent_id="1000003", user=user_id))
-                    finally:
-                        new_loop.close()
-                
-                thread = threading.Thread(target=run_async)
-                thread.start()
-                thread.join()
-            else:
-                # 如果当前循环没有运行，直接运行
-                loop.run_until_complete(send_wechat_message(msg=message, agent_id="1000003", user=user_id))
+            running_loop = asyncio.get_running_loop()
         except RuntimeError:
-            # 如果没有事件循环，创建新的
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
+            # 当前线程没有正在运行的事件循环：直接运行并等待完成
             try:
-                new_loop.run_until_complete(send_wechat_message(msg=message, agent_id="1000003", user=user_id))
+                asyncio.run(_send())
             finally:
-                new_loop.close()
-        finally:
-            # 一次性(date)任务发送后清理：不依赖 TTL，确保不永久堆积
-            _cleanup_once_task()
+                # 一次性(date)任务发送后清理：不依赖 TTL，确保不永久堆积
+                _cleanup_once_task()
+        else:
+            # 当前线程已有事件循环：投递任务执行，完成后再做清理
+            task = running_loop.create_task(_send())
+
+            def _done_callback(t: "asyncio.Task[None]"):
+                try:
+                    t.result()
+                except Exception as e:
+                    logger = get_logger("schedule_manager")
+                    logger.error(f"发送定时消息失败: {str(e)}")
+                finally:
+                    _cleanup_once_task()
+
+            task.add_done_callback(_done_callback)
     except Exception as e:
         logger = get_logger("schedule_manager")
         logger.error(f"发送定时消息失败: {str(e)}")

@@ -3,6 +3,63 @@ import os
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
+# 全局日志只配置一次，避免每个 logger 各自创建文件/handler
+_GLOBAL_CONFIGURED = False
+_GLOBAL_LOG_FILE: str | None = None
+
+
+class DailyPathRotatingFileHandler(RotatingFileHandler):
+    """
+    同时支持：
+    - 按天切换输出路径：logs/YYYY-MM-DD/<filename>
+    - 按大小滚动：继承 RotatingFileHandler 的 maxBytes/backupCount
+    """
+
+    def __init__(
+        self,
+        base_log_dir: str,
+        filename: str,
+        maxBytes: int,
+        backupCount: int,
+        encoding: str = "utf-8",
+    ):
+        self._base_log_dir = base_log_dir
+        self._filename = filename
+        self._current_day = datetime.now().strftime("%Y-%m-%d")
+        full_path = self._build_path_for_day(self._current_day)
+        super().__init__(
+            full_path,
+            maxBytes=maxBytes,
+            backupCount=backupCount,
+            encoding=encoding,
+        )
+
+    def _build_path_for_day(self, day: str) -> str:
+        daily_dir = os.path.join(self._base_log_dir, day)
+        os.makedirs(daily_dir, exist_ok=True)
+        return os.path.join(daily_dir, self._filename)
+
+    def _maybe_switch_day(self):
+        day = datetime.now().strftime("%Y-%m-%d")
+        if day == self._current_day:
+            return
+        self._current_day = day
+        new_path = self._build_path_for_day(day)
+        # 切换 baseFilename 并重开文件流
+        self.acquire()
+        try:
+            if self.stream:
+                self.stream.close()
+                self.stream = None
+            self.baseFilename = os.path.abspath(new_path)
+            self.stream = self._open()
+        finally:
+            self.release()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._maybe_switch_day()
+        super().emit(record)
+
 class Logger:
     """日志系统工具类"""
     
@@ -42,88 +99,86 @@ class Logger:
         self._setup_logger()
     
     def _setup_logger(self):
-        """设置日志器"""
-        try:
-            # 按日期创建日志目录
-            today = datetime.now().strftime('%Y-%m-%d')
-            daily_log_dir = os.path.join(self.log_dir, today)
-            if not os.path.exists(daily_log_dir):
-                os.makedirs(daily_log_dir)
-        except Exception as e:
-            # 如果创建目录失败，只使用控制台输出
-            print(f"警告：无法创建日志目录 {self.log_dir}，错误：{str(e)}")
-            print("将只使用控制台输出日志")
-            self.log_dir = None
-        
-        # 创建日志器
+        """设置日志器（全局统一到一个文件）。"""
+        global _GLOBAL_CONFIGURED, _GLOBAL_LOG_FILE
+
+        # 创建日志器（命名 logger 仅用于区分 %(name)s）
         self.logger = logging.getLogger(self.name)
-        
-        # 从YAML配置获取日志级别
-        try:
-            from .yaml_config import get_config
-            yaml_config = get_config()
-            log_level_str = yaml_config.get("logging.level", "INFO")
-            log_level = getattr(logging, log_level_str.upper(), logging.INFO)
-        except Exception:
-            log_level = logging.INFO
-        
-        self.logger.setLevel(log_level)
-        
-        # 避免重复添加处理器
-        if self.logger.handlers:
-            return
-        
-        # 创建格式化器
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        
-        # 控制台处理器
-        try:
-            from .yaml_config import get_config
-            yaml_config = get_config()
-            console_enabled = yaml_config.get("logging.console", True)
-        except Exception:
-            console_enabled = True
-            
-        if console_enabled:
-            console_handler = logging.StreamHandler()
-            console_handler.setLevel(log_level)
-            console_handler.setFormatter(formatter)
-            self.logger.addHandler(console_handler)
-        
-        # 文件处理器 - 按模块名分割（只有在目录可用时才添加）
-        if self.log_dir is not None:
+
+        # 只做一次全局配置：root handler -> wxbot.log
+        if not _GLOBAL_CONFIGURED:
+            # 从YAML配置获取日志级别与开关
             try:
                 from .yaml_config import get_config
                 yaml_config = get_config()
+                log_level_str = yaml_config.get("logging.level", "INFO")
+                log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+                console_enabled = yaml_config.get("logging.console", True)
                 file_enabled = yaml_config.get("logging.file", True)
                 max_size = yaml_config.get("logging.max_size", "10MB")
                 backup_count = yaml_config.get("logging.backup_count", 5)
-                
-                # 转换max_size为字节数
-                if isinstance(max_size, str):
-                    if max_size.endswith("MB"):
-                        max_size = int(max_size[:-2]) * 1024 * 1024
-                    elif max_size.endswith("KB"):
-                        max_size = int(max_size[:-2]) * 1024
+                log_filename = yaml_config.get("logging.filename", "wxbot.log")
+            except Exception:
+                log_level = logging.INFO
+                console_enabled = True
+                file_enabled = True
+                max_size = "10MB"
+                backup_count = 5
+                log_filename = "wxbot.log"
+
+            # 转换max_size为字节数
+            if isinstance(max_size, str):
+                s = max_size.strip().upper()
+                try:
+                    if s.endswith("MB"):
+                        max_size = int(s[:-2]) * 1024 * 1024
+                    elif s.endswith("KB"):
+                        max_size = int(s[:-2]) * 1024
                     else:
-                        max_size = int(max_size)
-                
-                if file_enabled:
-                    file_handler = RotatingFileHandler(
-                        os.path.join(daily_log_dir, f'{self.name}.log'),
-                        maxBytes=max_size,
-                        backupCount=backup_count,
-                        encoding='utf-8'
+                        max_size = int(s)
+                except Exception:
+                    max_size = 10 * 1024 * 1024
+
+            # 创建格式化器
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+
+            root = logging.getLogger()
+            root.setLevel(log_level)
+
+            if console_enabled:
+                ch = logging.StreamHandler()
+                ch.setLevel(log_level)
+                ch.setFormatter(formatter)
+                root.addHandler(ch)
+
+            if file_enabled:
+                try:
+                    if self.log_dir is not None and not os.path.exists(self.log_dir):
+                        os.makedirs(self.log_dir, exist_ok=True)
+                    log_dir = self.log_dir if self.log_dir is not None else "."
+                    fh = DailyPathRotatingFileHandler(
+                        base_log_dir=log_dir,
+                        filename=log_filename,
+                        maxBytes=int(max_size),
+                        backupCount=int(backup_count),
+                        encoding="utf-8",
                     )
-                    file_handler.setLevel(log_level)
-                    file_handler.setFormatter(formatter)
-                    self.logger.addHandler(file_handler)
-            except Exception as e:
-                print(f"警告：无法创建文件日志处理器，错误：{str(e)}")
-                print("将只使用控制台输出日志")
+                    fh.setLevel(log_level)
+                    fh.setFormatter(formatter)
+                    root.addHandler(fh)
+                    _GLOBAL_LOG_FILE = fh.baseFilename
+                except Exception as e:
+                    print(f"警告：无法创建统一文件日志处理器，错误：{e!r}")
+                    print("将只使用控制台输出日志")
+
+            _GLOBAL_CONFIGURED = True
+
+        # 命名 logger 不再单独挂 handler，全部向 root 汇聚
+        self.logger.propagate = True
+        self.logger.setLevel(logging.NOTSET)
     
     def info(self, message: str):
         """信息日志"""

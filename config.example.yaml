@@ -1,96 +1,132 @@
-# wxbot 配置文件示例
-# 企业微信机器人配置
+﻿# wxbot 完整配置示例
+# 复制为 config.yaml 后按你的企业微信、Redis、模型和业务账号信息修改。
 
-# 企业微信基础配置
 wechat:
-  corp_id: "YOUR_CORP_ID"  # 企业ID
-  # 代理配置（可选，按前缀识别 http/s5）
-  proxy: "http://127.0.0.1:7890"
+  # 企业微信企业 ID
+  corp_id: "YOUR_CORP_ID"
+
+  # 企业微信 HTTP 代理，可选。
+  # 支持 http://、https://、s5://、s5h://；不需要代理可填 null。
+  proxy: null
   debug: false
 
-  # 消息去重配置
-  enable_msg_dedup: true          # 是否启用消息去重（推荐开启）
-  msg_dedup_ttl: 30             # 消息去重标记有效期（秒）
-  
-  # OAuth网页授权配置
+  # 消息去重。企业微信可能重试推送，建议开启。
+  enable_msg_dedup: true
+  msg_dedup_ttl: 30
+
   oauth:
-    # 回调域名配置（必须与部署域名一致）
-    callback_domain: "https://your-domain.com"  # 替换为您的实际域名
-    # 支持多个回调域名（可选）
+    # 企业微信 OAuth 回调域名，必须与企业微信后台配置一致。
+    callback_domain: "https://your-domain.com"
     callback_domains:
       - "https://your-domain.com"
-      - "https://www.your-domain.com"
-    
-  # 应用配置
+
+  # 每个企业微信应用绑定一组 wxbot agent 插件。
+  # 注意：这里是 plugins；LangChain 工具绑定在每个 agent_config.yaml 的 custom_tools/global_tools 中。
   agents:
     "1000001":
-      name: "定时任务"
-      agent_id: 1000001  # 应用ID
-      corp_secret: "YOUR_CORP_SECRET"  # 应用Secret
-      token: "YOUR_TOKEN"  # 与企业微信后台设置一致的Token
-      encoding_aes_key: "YOUR_ENCODING_AES_KEY"  # 企业微信后台生成的EncodingAESKey
-      plugins: ["schedule_manager"]  # 允许的插件
-      # 用户信息增强配置
-      fetch_user_info: false
-      include_time_info: false
-      
-      # OAuth配置（可选，如果不配置则使用全局配置）
-      oauth:
-        callback_domain: "https://your-domain.com"  # 应用特定的回调域名
-    
-    "1000002":
-      agent_id: 1000002  # 应用ID
+      name: "系统演示"
+      agent_id: 1000001
       corp_secret: "YOUR_CORP_SECRET"
       token: "YOUR_TOKEN"
       encoding_aes_key: "YOUR_ENCODING_AES_KEY"
-      plugins: ["ai_chat_demo"]
-      # 用户信息增强配置
-      fetch_user_info: true
+      plugins:
+        - demo_conversation
+      fetch_user_info: false
       include_time_info: true
-      
-      # OAuth配置
       oauth:
         callback_domain: "https://your-domain.com"
 
-# API密钥配置
-api_keys:
-  dashscope: "YOUR_DASHSCOPE_API_KEY"  # 阿里云千问API Key
-  ark: "YOUR_ARK_API_KEY"  # 火山引擎API Key（可选）
+    "1000002":
+      name: "定时提醒"
+      agent_id: 1000002
+      corp_secret: "YOUR_CORP_SECRET"
+      token: "YOUR_TOKEN"
+      encoding_aes_key: "YOUR_ENCODING_AES_KEY"
+      plugins:
+        - schedule_manager
+      fetch_user_info: false
+      include_time_info: true
 
-# Redis配置
+    # 单个企业微信应用也可以启用多个 agent 插件。
+    # Runtime 会根据各 agent_config.yaml 的 route_keywords / logic.py 路由。
+    "1000003":
+      name: "混合助手"
+      agent_id: 1000003
+      corp_secret: "YOUR_CORP_SECRET"
+      token: "YOUR_TOKEN"
+      encoding_aes_key: "YOUR_ENCODING_AES_KEY"
+      plugins:
+        - demo_conversation
+        - schedule_manager
+      fetch_user_info: true
+      include_time_info: true
+
+# API Key 统一放这里。models.* 通过 api_key_config 引用这里的 key。
+api_keys:
+  dashscope: "YOUR_DASHSCOPE_API_KEY"
+  ark: "YOUR_ARK_API_KEY"
+
+# LangChain OpenAI-compatible 模型配置。
+# api_key_config: 从 api_keys.<name> 读取。
+# api_key_env: api_keys 为空时可从环境变量读取。
+# api_key: 也可以直接写在模型下，但不建议提交到 GitHub。
+models:
+  dashscope:
+    model: "qwen-plus"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_config: "dashscope"
+    api_key_env: "DASHSCOPE_API_KEY"
+    temperature: 0.7
+    max_tokens: 1024
+
+  ark:
+    model: "doubao-1-5-pro-256k-250115"
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    api_key_config: "ark"
+    api_key_env: "ARK_API_KEY"
+    temperature: 0.7
+    max_tokens: 1024
+
 redis:
-  host: "127.0.0.1"
+  # Docker Compose 内使用 redis-stack；本地直跑可改为 127.0.0.1。
+  # LangGraph Redis checkpoint 需要 Redis Stack 的 RedisJSON + RediSearch。
+  host: "redis-stack"
   port: 6379
-  password: "YOUR_REDIS_PASSWORD"  # 可选
+  password: null
   db: 0
 
-# 部署配置
 deployment:
-  port: 4455  # 服务端口
-  # 域名配置（用于OAuth回调）
-  domain: "your-domain.com"  # 您的部署域名
+  port: 4455
+  domain: "your-domain.com"
+  media_url_base: "https://your-domain.com"
 
-# 日志配置
 logging:
-  level: "INFO"  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
-  console: true  # 是否启用控制台输出
-  file: true     # 是否启用文件输出
-  max_size: "10MB"  # 单个日志文件最大大小
-  backup_count: 5   # 保留的日志文件数量
+  level: "INFO"
+  console: true
+  file: true
+  filename: "wxbot.log"
+  max_size: "10MB"
+  backup_count: 5
 
-# 定时任务配置
+# APScheduler 内置定时任务配置。
+# 用户通过 schedule_manager 创建的提醒会单独写入 Redis 并由 scheduler leader 同步。
 scheduler:
-  # 测试模式（每分钟执行一次，仅调试用）
   test: false
-  
-  # 任务配置
   tasks:
-    demo:
-      time: "09:00"  # 执行时间
-      day_of_week: "*"  # 每天；可填 [1,2,3,4,5] 表示工作日
-      users: ["user1", "user2"]
+    morning:
+      time: "08:30"
+      day_of_week: "*"
+      users:
+        - "user1"
+        - "user2"
+
     today_60s:
-      time: "09:50"  # 执行时间
-      day_of_week: "*"  # 每天；可填 [1,2,3,4,5] 表示工作日
-      users: ["user1", "user2"]
-  
+      time: "09:50"
+      day_of_week: "*"
+      users:
+        - "user1"
+
+# Agent 插件不在这里定义人设。
+# 人设、模型覆盖、route_keywords、custom_tools/global_tools 在：
+# app/agent_plugins/<agent_key>/agent_config.yaml
+

@@ -1,0 +1,2 @@
+"""wxbot application package."""
+

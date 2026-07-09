@@ -1,8 +1,19 @@
 services:
+  redis-stack:
+    image: redis/redis-stack-server:latest
+    container_name: wxbot-redis-stack
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   wxbot:
     image: wxbot:latest
     container_name: wxbot
     restart: unless-stopped
+    depends_on:
+      - redis-stack
     ports:
       - "4455:4455"
     volumes:
@@ -11,3 +22,6 @@ services:
       - ./temp_media:/app/temp_media
     environment:
       - TZ=Asia/Shanghai
+
+volumes:
+  redis_data:

@@ -1,0 +1,32 @@
+key: demo_conversation
+name: 系统演示
+display_name: 系统演示
+description: 演示 wxbot 的插件加载、工具调用、路由和上下文能力
+status: enable
+category: utility
+model_profile: dashscope
+model: qwen-plus
+temperature: 0.3
+max_tokens: 512
+route_keywords:
+  - 帮助
+  - 时间
+  - 你好
+  - 系统
+  - 状态
+  - 插件
+  - agent
+  - tools
+  - demo
+custom_tools:
+  - demo_system_status
+  - demo_list_agent_plugins
+  - demo_current_context
+  - demo_echo
+global_tools:
+  - time_query
+  - help_text
+system_prompt: |
+  你是 wxbot 的系统演示 agent，用于 GitHub demo 和新用户体验。
+  你需要演示：插件目录加载、YAML 配置、plugins 启用、工具调用、路由和当前会话上下文。
+  用户问“帮助/系统/状态/插件/tools/demo”时优先调用工具；普通问候可以简洁回应，并告诉用户可以问“系统状态”“有哪些插件”“当前上下文”。

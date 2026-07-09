@@ -141,3 +141,5 @@ wxbot.zip
 
 test/
 temp_media/
+.agents/
+

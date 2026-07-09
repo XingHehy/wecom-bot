@@ -1,107 +1,170 @@
-# 企业微信机器人
+# wxbot
 
-一个可开源部署的企业微信机器人服务，支持：
+wxbot 是一个面向企业微信自建应用的智能机器人服务。项目使用 FastAPI 接收企业微信回调，用 LangChain 1.x 构建多 Agent 对话能力，并通过 Redis 保存记忆、业务数据和定时任务状态。
 
-- 多应用（多 `agent_id`）消息接入
-- 定时任务（创建/查看/修改/删除）
-- 企业微信 Webhook 回调处理
+## 功能特性
 
-> 说明：本项目完成于 2025 年，部分第三方接口、SDK 或平台配置项后续可能变化。如遇到不兼容，请优先参考对应平台最新官方文档调整。  
-> 使用声明：使用、修改与分发本项目代码时，请遵守本项目采用的开源协议（LICENSE）。
+- 企业微信自建应用消息接入，支持文本、图片和主动消息发送。
+- LangChain 1.x Agent Runtime，支持工具调用、短期记忆和多 Agent 路由。
+- Agent 插件化管理，每个插件拥有独立目录、配置、人设、工具和业务逻辑。
+- 内置系统演示插件和定时提醒插件，便于作为 GitHub demo 和二次开发模板。
+- APScheduler 定时任务，支持 Redis 持久化和多进程 leader lock。
+- Redis 区分 LangGraph checkpoint 与业务 keyspace，便于长期运行和排查。
 
-## 部分功能演示图片
+## 目录结构
 
-1、定时任务管理
-
-<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-  <div style="display:flex;gap:12px;align-items:flex-start;min-width:max-content;padding:6px 2px;">
-    <img src="./docs/images/preview/消息通知1.jpg" alt="项目演示图1" style="height:360px;max-width:100%;object-fit:contain;border-radius:8px;" loading="lazy" />
-    <img src="./docs/images/preview/消息通知2.jpg" alt="项目演示图2" style="height:360px;max-width:100%;object-fit:contain;border-radius:8px;" loading="lazy" />
-    <img src="./docs/images/preview/消息通知3.jpg" alt="项目演示图3" style="height:360px;max-width:100%;object-fit:contain;border-radius:8px;" loading="lazy" />
-  </div>
-</div>
-
-
-## 项目详细介绍
-
-本项目基于 `FastAPI` 实现企业微信消息回调服务，核心目标是：  
-将「企业微信应用消息能力」和「可扩展的插件/定时任务机制」解耦，便于按业务快速扩展。
-
-你可以把它理解为三层：
-
-- **应用层（agents）**：每个企业微信应用独立配置 `agent_id/secret/token/plugins`。
-- **插件层（plugins）**：处理收到的消息并返回回复内容（例如 AI 对话、任务管理）。
-- **任务层（tasks）**：通过调度器按时间触发，主动推送消息给企业微信用户。
-
-## 功能概览
-
-### 1) 多应用
-
-- 在 `config.yaml -> wechat.agents` 下可配置多个应用。
-- 每个应用可绑定不同插件集合，实现同一服务多机器人分工。
-
-### 2) 插件机制
-
-- 插件放在 `plugins/` 目录，继承 `core/plugin.py` 中的 `Plugin` 基类。
-- 框架会自动加载插件，并按应用配置进行启用。
-- 当前示例插件：
-  - `schedule_manager`：定时任务管理插件（创建/查看/删除/修改任务）
-  - `ai_chat_demo`：通用 AI 对话演示插件
-
-### 3) 定时任务
-
-- 任务放在 `tasks/` 目录，通过 `@scheduled_task(...)` 注册。
-- 当前示例任务：
-  - `demo_task.py`：基础文本定时推送示例
-  - `today_60s.py`：每日资讯图片推送示例
-
-### 4) Webhook 回调
-
-- 企业微信消息回调由服务统一处理。
-- 回调消息会根据 `agent_id` 分发到对应应用已启用插件。
+```text
+app/
+  main.py                 FastAPI 入口
+  agents/                 Agent runtime 与调度
+  agent_plugins/          Agent 插件目录
+  common/                 插件基础类与加载器
+  config/                 YAML 配置加载
+  memory/                 LangGraph checkpointer
+  scheduler/              定时任务
+  tools/                  全局 LangChain tools
+  wecom/                  企业微信协议、加解密、消息发送
+config.example.yaml       配置示例
+docker-compose.yml        Redis Stack 与 wxbot 服务
+Dockerfile                容器镜像
+main.py                   兼容启动入口
+```
 
 ## 快速开始
 
-1. 复制配置模板：
+1. 创建配置文件：
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-2. 安装依赖并启动：
+2. 修改 `config.yaml` 中的企业微信、模型、Redis 和业务账号配置。
+
+3. 安装依赖：
 
 ```bash
-pip install -r requirements.txt
-python main.py
+python -m pip install -r requirements.txt
 ```
 
-## Docker 运行
+4. 启动服务：
 
-### 构建镜像
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 4455
+```
+
+服务启动后可访问：
+
+- `GET /health`：查看 Redis、scheduler、agent registry 等状态。
+- 企业微信回调地址：按企业微信后台配置指向当前服务的回调接口。
+
+## 配置说明
+
+每个企业微信应用通过 `wechat.agents.<agent_id>.plugins` 绑定 Agent 插件：
+
+```yaml
+wechat:
+  agents:
+    "1000001":
+      name: "系统演示"
+      agent_id: 1000001
+      corp_secret: "YOUR_CORP_SECRET"
+      token: "YOUR_TOKEN"
+      encoding_aes_key: "YOUR_ENCODING_AES_KEY"
+      plugins:
+        - demo_conversation
+```
+
+`plugins` 表示当前企业微信应用启用哪些 Agent 插件。LangChain 工具绑定不写在这里，而是写在每个插件自己的 `agent_config.yaml` 中：
+
+```yaml
+custom_tools:
+  - create_reminder
+global_tools:
+  - time_query
+```
+
+模型配置支持 OpenAI-compatible 接口，例如 DashScope 和火山方舟：
+
+```yaml
+api_keys:
+  dashscope: "YOUR_DASHSCOPE_API_KEY"
+  ark: "YOUR_ARK_API_KEY"
+
+models:
+  dashscope:
+    model: "qwen-plus"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key_config: "dashscope"
+
+  ark:
+    model: "doubao-1-5-pro-256k-250115"
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    api_key_config: "ark"
+```
+
+## Agent 插件
+
+每个 Agent 插件位于 `app/agent_plugins/<plugin_key>/`：
+
+```text
+app/agent_plugins/demo_conversation/
+  agent_config.yaml       插件元信息、人设、模型参数、路由关键词、工具绑定
+  tools.py                插件专属工具
+  logic.py                可选路由和自定义逻辑
+  __init__.py
+```
+
+`agent_config.yaml` 常用字段：
+
+- `key`：插件唯一标识，必须与目录语义一致。
+- `status`：`enable` 或 `disable`。
+- `category`：插件分类，例如 `utility`、`schedule`。
+- `route_keywords`：进入模型前的确定性路由关键词。
+- `custom_tools`：当前插件 `tools.py` 中暴露的工具。
+- `global_tools`：`app/tools/` 中的共享工具。
+- `system_prompt`：Agent 系统提示词。
+
+当前仓库默认保留两个 Agent 插件：
+
+- `demo_conversation`：系统演示插件，展示插件加载、上下文摘要和基础工具调用链路。
+- `schedule_manager`：定时提醒插件，展示业务工具调用和 APScheduler 集成。
+
+## 路由与工具
+
+消息处理流程是先选 Agent，再由 Agent 决定是否调用工具。
+
+`route_keywords` 用于入口分流。Runtime 会在调用大模型前，根据当前企业微信应用启用的 `plugins` 计算路由分数，命中关键词时直接把消息交给对应 Agent。它适合提醒、查询、系统状态这类高置信业务入口。
+
+`custom_tools` 和 `global_tools` 是 Agent 被选中之后可用的工具集合。模型会结合 `system_prompt` 和用户消息自行判断是否调用工具、调用哪个工具，以及如何组织最终回复。工具本身不负责选择 Agent。
+
+如果一个企业微信应用只启用一个插件，路由关键词不是必须的；如果启用多个插件，建议为业务插件配置清晰的 `route_keywords`。例如同时启用 `demo_conversation` 和 `schedule_manager` 时，系统状态类消息走 demo，提醒类消息走 schedule。
+
+## Docker
+
+构建镜像：
 
 ```bash
 docker build -t wxbot:latest -f Dockerfile .
 ```
 
-### 启动服务
+启动服务：
 
 ```bash
 docker compose up -d
 ```
 
-### 停止服务
+停止服务：
 
 ```bash
 docker compose down
 ```
 
-## 配置说明
+`docker-compose.yml` 默认包含 Redis Stack。LangGraph Redis checkpoint 需要 RedisJSON 和 RediSearch，生产环境请使用兼容 Redis Stack 的 Redis 服务。
 
-- 请使用 `config.example.yaml` 作为模板，填写企业微信应用信息与 Redis 配置。
-- 详细字段说明见 [`docs/配置说明.md`](docs/配置说明.md)。
-- 其他：[`docs/企业微信应用配置说明.md`](docs/企业微信应用配置说明.md)。
+## 开发检查
 
-## 开发文档
-
-- 自定义插件与定时任务开发：[`docs/自定义插件.md`](docs/自定义插件.md)
-- 插件分享仓库：[`wecom-bot-plugins`](https://github.com/XingHehy/wecom-bot-plugins)
+```bash
+python -m compileall app main.py
+python -c "import app.main; print(app.main.app.title)"
+python -c "from app.common.loader import load_agent_plugins; r=load_agent_plugins(); print(sorted(r.plugins.keys()))"
+```

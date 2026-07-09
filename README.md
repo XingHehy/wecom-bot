@@ -7,7 +7,7 @@ wxbot 是一个面向企业微信自建应用的智能机器人服务。项目�
 - 企业微信自建应用消息接入，支持文本消息和主动消息发送。
 - LangChain 1.x Agent Runtime，支持工具调用、短期记忆、多 Agent 路由和 sub-agent 委托。
 - Agent 插件化管理，每个插件拥有独立目录、配置、人设、工具和业务逻辑。
-- 内置 GitHub demo 插件：`demo_agent`、`sub_agent_demo`、`ai_schedule_manager`。
+- 内置示例插件：`demo_agent`、`sub_agent_demo`、`ai_schedule_manager`。
 - APScheduler 定时任务，支持 Redis 持久化和多进程 leader lock。
 - Redis 是必需依赖；Redis 连接或 LangGraph Redis checkpoint 初始化失败时，程序会直接退出。
 
@@ -31,7 +31,7 @@ Dockerfile                容器镜像
 main.py                   兼容启动入口
 ```
 
-GitHub demo 口径建议保留：
+项目内置的示例模块包括：
 
 - `app/agent_plugins/demo_agent`
 - `app/agent_plugins/sub_agent_demo`
@@ -142,9 +142,9 @@ app/agent_plugins/demo_agent/
 - `sub_agents`：当前 Agent 可委托调用的其他 Agent。
 - `system_prompt`：Agent 系统提示词。
 
-内置 demo 插件：
+内置示例插件：
 
-- `demo_agent`：主 demo Agent，演示系统状态、插件加载、上下文和 sub-agent 委托。
+- `demo_agent`：主示例 Agent，演示系统状态、插件加载、上下文和 sub-agent 委托。
 - `sub_agent_demo`：用于演示被委托调用的子 Agent，也可以独立作为普通 Agent 使用。
 - `ai_schedule_manager`：自然语言创建、查询、删除和修改提醒。
 

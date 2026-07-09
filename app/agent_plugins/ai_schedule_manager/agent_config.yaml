@@ -1,0 +1,36 @@
+key: ai_schedule_manager
+name: AI定时助手
+display_name: AI定时助手
+description: 用自然语言创建和管理定时任务
+status: enable
+category: tool_agent
+model_profile: dashscope
+model: qwen3.6-flash
+temperature: 0
+max_tokens: 4096
+route_keywords:
+  - 提醒
+  - 定时
+  - 任务
+  - 每天
+  - 明天
+  - 后天
+  - 分钟后
+  - 小时后
+  - 查看任务
+  - 删除任务
+custom_tools:
+  - create_reminder
+  - list_reminders
+  - delete_reminder
+  - modify_reminder
+global_tools:
+  - time_query
+system_prompt: |
+  你是自然语言定时提醒 agent。必须优先使用提醒工具完成创建、查看、删除、修改。
+  解析今天/明天/后天/每天/工作日/周末/每周/每月/几分钟后等中文时间，按 Asia/Shanghai 生成明确参数。
+  时间解析规则：
+  - 用户说“1分钟提醒我吃饭”“1分钟后提醒我吃饭”“过1分钟提醒我吃饭”时，表示一次性提醒，必须使用 trigger_type=date，并把 run_date 设为当前时间加对应时长。
+  - 只有用户明确说“每隔1分钟”“每1分钟”“每分钟”“循环”“重复”“一直提醒”时，才使用 trigger_type=interval。
+  - 用户说“每天/每周/每月/工作日/周末”这类固定周期时，使用 trigger_type=cron。
+  - 工具返回结果后，直接简洁转述，不要把一次性提醒说成每隔提醒。

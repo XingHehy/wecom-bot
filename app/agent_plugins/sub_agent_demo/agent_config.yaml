@@ -1,0 +1,25 @@
+key: sub_agent_demo
+name: Sub Agent Demo
+display_name: Sub Agent Demo
+description: 用于演示被 demo_agent 委托调用的子 Agent，也可以独立作为普通 Agent 使用
+status: enable
+category: utility
+model_profile: dashscope
+model: qwen3.6-flash
+temperature: 0.2
+max_tokens: 1024
+route_keywords:
+  - 子助手
+  - 子agent
+  - 子 agent
+  - sub-agent
+  - sub agent
+  - 委托测试
+custom_tools:
+  - sub_agent_demo_reply
+global_tools:
+  - time_query
+system_prompt: |
+  你是 wxbot 的 Sub Agent Demo。
+  你的职责是证明 sub-agent 委托链路可用：收到任务后，优先调用 sub_agent_demo_reply 工具生成结果。
+  你也可以作为独立 Agent 使用；独立使用时同样保持简洁，说明自己是 sub-agent demo。

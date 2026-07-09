@@ -43,7 +43,8 @@ async def lifespan(app: FastAPI):
         await checkpointer_provider.get()
         logger.info(f"LangGraph memory backend: {checkpointer_provider.backend}")
     except Exception as exc:
-        logger.warning(f"LangGraph memory 初始化失败，将按降级策略运行: {exc}")
+        logger.error(f"LangGraph Redis memory 初始化失败，程序退出: {exc}", exc_info=True)
+        sys.exit(1)
 
     try:
         start_scheduler()

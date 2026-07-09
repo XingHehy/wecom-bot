@@ -20,6 +20,7 @@ class AgentProfile:
     max_tokens: Optional[int] = None
     custom_tools: List[str] = field(default_factory=list)
     global_tools: List[str] = field(default_factory=list)
+    sub_agents: List[str] = field(default_factory=list)
     route_keywords: List[str] = field(default_factory=list)
     plugin_package: str = ""
 
@@ -70,7 +71,7 @@ def profile_from_config(data: Dict[str, Any], plugin_package: str) -> AgentProfi
         system_prompt=str(data.get("system_prompt") or ""),
         custom_tools=list(data.get("custom_tools") or []),
         global_tools=list(data.get("global_tools") or []),
+        sub_agents=list(data.get("sub_agents") or []),
         route_keywords=list(data.get("route_keywords") or []),
         plugin_package=plugin_package,
     )
-

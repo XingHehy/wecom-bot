@@ -9,7 +9,6 @@ CONFIG = {
     "CORP_ID": yaml_config.get("wechat.corp_id"),
     "PORT": yaml_config.get("deployment.port", 4455),
     "DASHSCOPE_API_KEY": yaml_config.get("api_keys.dashscope"),
-    "ARK_API_KEY": yaml_config.get("api_keys.ark"),
     "REDIS_HOST": yaml_config.get("redis.host", "localhost"),
     "REDIS_PORT": yaml_config.get("redis.port", 6379),
     "REDIS_PASSWORD": yaml_config.get("redis.password"),
@@ -24,18 +23,11 @@ def get_model_config(profile: str = "dashscope") -> dict:
     """Return an OpenAI-compatible chat model config."""
     models = yaml_config.get("models", {}) or {}
     configured = models.get(profile, {}) if isinstance(models, dict) else {}
-    if profile == "ark":
-        defaults = {
-            "model": "doubao-1-5-pro-256k-250115",
-            "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-            "api_key": CONFIG.get("ARK_API_KEY") or os.getenv("ARK_API_KEY"),
-        }
-    else:
-        defaults = {
-            "model": "qwen-plus",
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": CONFIG.get("DASHSCOPE_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
-        }
+    defaults = {
+        "model": "qwen3.6-flash",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "api_key": CONFIG.get("DASHSCOPE_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
+    }
     merged = {**defaults, **configured}
     api_key_config = merged.get("api_key_config")
     api_key_env = merged.get("api_key_env")

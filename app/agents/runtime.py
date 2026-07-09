@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from app.config.settings import AGENT_CONFIGS, get_model_config
+from app.config.settings import AGENT_CONFIGS, get_model_config, yaml_config
 from app.common.base_agent import AgentProfile
 from app.common.loader import AgentPluginRegistry, load_agent_plugins
 from app.logger import get_logger
@@ -27,7 +28,7 @@ class AgentRuntime:
         configured_plugins = self.agent_config.get("plugins") or []
         self.enabled_agents = self.registry.normalize_keys(configured_plugins)
         if not self.enabled_agents:
-            self.enabled_agents = ["demo_conversation"]
+            self.enabled_agents = ["demo_agent"]
         self._compiled: Dict[str, Any] = {}
 
     def status(self) -> Dict[str, Any]:
@@ -39,6 +40,7 @@ class AgentRuntime:
                     "key": key,
                     "name": profiles[key].name if key in profiles else key,
                     "description": profiles[key].description if key in profiles else "unknown",
+                    "sub_agents": profiles[key].sub_agents if key in profiles else [],
                 }
                 for key in self.enabled_agents
             ],
@@ -81,6 +83,12 @@ class AgentRuntime:
         return self.registry.normalize_keys(values)
 
     def _route(self, message: Any) -> str:
+        profiles = self.registry.all_profiles()
+        for key in self.enabled_agents:
+            profile = profiles.get(key)
+            if profile and profile.category == "chat" and profile.sub_agents:
+                return key
+
         text = message if isinstance(message, str) else " ".join(str(v) for v in message.values()) if isinstance(message, dict) else str(message)
         scored: List[tuple[int, str]] = []
         for key in self.enabled_agents:
@@ -94,7 +102,6 @@ class AgentRuntime:
             scored.sort(key=lambda item: item[0], reverse=True)
             return scored[0][1]
 
-        profiles = self.registry.all_profiles()
         for key in self.enabled_agents:
             profile = profiles.get(key)
             if profile and profile.category == "chat":
@@ -116,12 +123,16 @@ class AgentRuntime:
         tools = self._tools_for(key, user_id)
         model = self._model_for(profile)
         system_prompt = self._system_prompt_for(profile)
-        self._compiled[cache_key] = create_agent(
-            model=model,
-            tools=tools,
-            system_prompt=system_prompt,
-            checkpointer=checkpointer,
-        )
+        create_kwargs = {
+            "model": model,
+            "tools": tools,
+            "system_prompt": system_prompt,
+            "checkpointer": checkpointer,
+        }
+        middleware = self._middleware_for(profile)
+        if middleware:
+            create_kwargs["middleware"] = middleware
+        self._compiled[cache_key] = create_agent(**create_kwargs)
         return self._compiled[cache_key]
 
     def _model_for(self, profile: AgentProfile):
@@ -143,6 +154,7 @@ class AgentRuntime:
         plugin = self.registry.get(key)
         profile = plugin.profile
         tools: List[Any] = plugin.build_custom_tools(agent_id=self.agent_id, user_id=user_id)
+        tools.extend(self._sub_agent_tools_for(profile, user_id))
 
         if profile.global_tools:
             from app.tools.basic import build_basic_tools
@@ -151,9 +163,155 @@ class AgentRuntime:
             tools.extend(tool for tool in global_tools if tool.name in profile.global_tools)
         return tools
 
+    def _sub_agent_tools_for(self, profile: AgentProfile, user_id: str) -> List[Any]:
+        if not profile.sub_agents:
+            return []
+        try:
+            from langchain_core.tools import StructuredTool
+        except Exception as exc:
+            logger.warning(f"无法创建 sub-agent tools，langchain_core 不可用: {exc}")
+            return []
+
+        tools: List[Any] = []
+        for sub_key in self._allowed_sub_agents(profile):
+            sub_profile = self.registry.get(sub_key).profile
+            tool_name = f"call_agent_{sub_key}"
+
+            def _make_call_sub_agent(target_key: str):
+                async def _call_sub_agent(message: str) -> str:
+                    return await self._invoke_sub_agent(target_key, message, user_id)
+
+                return _call_sub_agent
+
+            tools.append(
+                StructuredTool.from_function(
+                    coroutine=_make_call_sub_agent(sub_key),
+                    name=tool_name,
+                    description=(
+                        f"把任务委托给 sub-agent「{sub_profile.display_name}」。"
+                        f"适用场景：{sub_profile.description}。"
+                        "输入应是需要该 sub-agent 处理的完整中文任务描述。"
+                    ),
+                )
+            )
+        return tools
+
+    def _allowed_sub_agents(self, profile: AgentProfile) -> List[str]:
+        allowed: List[str] = []
+        enabled = set(self.enabled_agents)
+        profiles = self.registry.all_profiles()
+        for raw in profile.sub_agents:
+            sub_key = str(raw)
+            if sub_key == profile.key:
+                logger.warning(f"忽略自身 sub_agent 引用: {profile.key}")
+                continue
+            if sub_key not in profiles:
+                logger.warning(f"忽略不存在或未启用的 sub_agent: {sub_key}")
+                continue
+            if sub_key not in enabled:
+                logger.warning(f"sub_agent {sub_key} 未在当前应用 plugins 中启用，已忽略")
+                continue
+            if sub_key not in allowed:
+                allowed.append(sub_key)
+        return allowed
+
+    async def _invoke_sub_agent(self, key: str, message: str, user_id: str) -> str:
+        profile = self.registry.get(key).profile
+        notify_cfg = yaml_config.get("agent.sub_agent_notify", {}) or {}
+        notify_enabled = bool(notify_cfg.get("enabled", True))
+        delay_seconds = float(notify_cfg.get("delay_seconds", 1.2))
+        template = str(notify_cfg.get("template") or "我让{agent_name}处理一下，稍等。")
+
+        task = asyncio.create_task(self._invoke_agent_once(key, message, user_id, thread_suffix=f"sub:{key}"))
+        if not notify_enabled:
+            return await task
+
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=delay_seconds)
+        except asyncio.TimeoutError:
+            try:
+                from app.wecom.enterprise_wechat import enqueue_active_message
+
+                await enqueue_active_message(
+                    agent_id=self.agent_id,
+                    msg=template.format(agent_name=profile.display_name, agent_key=key),
+                    user=user_id,
+                )
+            except Exception as exc:
+                logger.warning(f"发送 sub-agent 处理中提示失败: {exc}")
+            return await task
+
+    async def _invoke_agent_once(self, key: str, message: str, user_id: str, *, thread_suffix: str = "") -> str:
+        agent = await self._get_agent(key, user_id)
+        thread_id = thread_id_for(self.agent_id, user_id)
+        if thread_suffix:
+            thread_id = f"{thread_id}:{thread_suffix}"
+        result = await agent.ainvoke(
+            {"messages": [{"role": "user", "content": message}]},
+            config={"configurable": {"thread_id": thread_id}},
+        )
+        return self._extract_reply(result)
+
+    def _middleware_for(self, profile: AgentProfile) -> List[Any]:
+        cfg = yaml_config.get("agent.middleware.summarization", {}) or {}
+        if not cfg.get("enabled", False):
+            return []
+        try:
+            from langchain.agents.middleware import SummarizationMiddleware
+        except Exception as exc:
+            logger.warning(f"SummarizationMiddleware 不可用，跳过: {exc}")
+            return []
+
+        model_profile = str(cfg.get("model_profile") or profile.model_profile)
+        model = self._model_for(
+            AgentProfile(
+                key=f"{profile.key}_summary_model",
+                name="summary_model",
+                display_name="summary_model",
+                description="",
+                system_prompt="",
+                model_profile=model_profile,
+                model=cfg.get("model") or profile.model,
+                temperature=0,
+                max_tokens=int(cfg.get("max_tokens", 2048)),
+            )
+        )
+        candidate_kwargs = [
+            {
+                "model": model,
+                "max_tokens_before_summary": int(cfg.get("max_tokens_before_summary", 800000)),
+                "messages_to_keep": int(cfg.get("messages_to_keep", 20)),
+            },
+            {
+                "model": model,
+                "trigger": {"tokens": int(cfg.get("max_tokens_before_summary", 800000))},
+                "keep": {"messages": int(cfg.get("messages_to_keep", 20))},
+            },
+        ]
+        for kwargs in candidate_kwargs:
+            try:
+                return [SummarizationMiddleware(**kwargs)]
+            except TypeError:
+                continue
+            except Exception as exc:
+                logger.warning(f"SummarizationMiddleware 初始化失败，跳过: {exc}")
+                return []
+        logger.warning("SummarizationMiddleware 参数签名不匹配，已跳过")
+        return []
+
     def _system_prompt_for(self, profile: AgentProfile) -> str:
+        sub_agent_text = ""
+        if profile.sub_agents:
+            allowed_sub_agents = self._allowed_sub_agents(profile)
+            lines = ["\n\n可委托的 sub-agents："]
+            for sub_key in allowed_sub_agents:
+                sub_profile = self.registry.get(sub_key).profile
+                lines.append(f"- {sub_profile.display_name}（{sub_key}）：{sub_profile.description}")
+            if allowed_sub_agents:
+                lines.append("需要专业能力或复合任务时，优先调用合适的 call_agent_* 工具委托给 sub-agent。")
+                sub_agent_text = "\n".join(lines)
         return (
-            f"{profile.system_prompt}\n\n"
+            f"{profile.system_prompt}{sub_agent_text}\n\n"
             "你运行在企业微信机器人 wxbot 中。需要调用工具完成的事情必须调用工具；普通回复直接给最终文本。"
             "回复要适合企业微信消息，简洁、明确，不输出 markdown 代码块。"
         )

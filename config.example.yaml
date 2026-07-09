@@ -24,13 +24,14 @@ wechat:
   # 注意：这里是 plugins；LangChain 工具绑定在每个 agent_config.yaml 的 custom_tools/global_tools 中。
   agents:
     "1000001":
-      name: "系统演示"
+      name: "Demo Agent"
       agent_id: 1000001
       corp_secret: "YOUR_CORP_SECRET"
       token: "YOUR_TOKEN"
       encoding_aes_key: "YOUR_ENCODING_AES_KEY"
       plugins:
-        - demo_conversation
+        - demo_agent
+        - sub_agent_demo
       fetch_user_info: false
       include_time_info: true
       oauth:
@@ -43,28 +44,25 @@ wechat:
       token: "YOUR_TOKEN"
       encoding_aes_key: "YOUR_ENCODING_AES_KEY"
       plugins:
-        - schedule_manager
+        - ai_schedule_manager
       fetch_user_info: false
       include_time_info: true
 
-    # 单个企业微信应用也可以启用多个 agent 插件。
-    # Runtime 会根据各 agent_config.yaml 的 route_keywords / logic.py 路由。
+    # sub_agent_demo 也可以作为独立应用使用。
     "1000003":
-      name: "混合助手"
+      name: "Sub Agent Demo"
       agent_id: 1000003
       corp_secret: "YOUR_CORP_SECRET"
       token: "YOUR_TOKEN"
       encoding_aes_key: "YOUR_ENCODING_AES_KEY"
       plugins:
-        - demo_conversation
-        - schedule_manager
-      fetch_user_info: true
+        - sub_agent_demo
+      fetch_user_info: false
       include_time_info: true
 
 # API Key 统一放这里。models.* 通过 api_key_config 引用这里的 key。
 api_keys:
   dashscope: "YOUR_DASHSCOPE_API_KEY"
-  ark: "YOUR_ARK_API_KEY"
 
 # LangChain OpenAI-compatible 模型配置。
 # api_key_config: 从 api_keys.<name> 读取。
@@ -72,20 +70,26 @@ api_keys:
 # api_key: 也可以直接写在模型下，但不建议提交到 GitHub。
 models:
   dashscope:
-    model: "qwen-plus"
+    model: "qwen3.6-flash"
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     api_key_config: "dashscope"
     api_key_env: "DASHSCOPE_API_KEY"
     temperature: 0.7
-    max_tokens: 1024
+    max_tokens: 8192
 
-  ark:
-    model: "doubao-1-5-pro-256k-250115"
-    base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    api_key_config: "ark"
-    api_key_env: "ARK_API_KEY"
-    temperature: 0.7
-    max_tokens: 1024
+agent:
+  sub_agent_notify:
+    enabled: true
+    delay_seconds: 1.2
+    template: "我让{agent_name}处理一下，稍等。"
+
+  middleware:
+    summarization:
+      enabled: true
+      model_profile: dashscope
+      max_tokens: 2048
+      max_tokens_before_summary: 800000
+      messages_to_keep: 20
 
 redis:
   # Docker Compose 内使用 redis-stack；本地直跑可改为 127.0.0.1。
@@ -109,7 +113,7 @@ logging:
   backup_count: 5
 
 # APScheduler 内置定时任务配置。
-# 用户通过 schedule_manager 创建的提醒会单独写入 Redis 并由 scheduler leader 同步。
+# 用户通过 ai_schedule_manager 创建的提醒会单独写入 Redis 并由 scheduler leader 同步。
 scheduler:
   test: false
   tasks:

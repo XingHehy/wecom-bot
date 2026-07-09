@@ -24,7 +24,12 @@ def build_schedule_tools(agent_id: str, user_id: str) -> List:
         hours: int = 0,
         days: int = 0,
     ) -> str:
-        """创建提醒任务。trigger_type 为 date、cron 或 interval；date 使用 run_date ISO 时间。"""
+        """创建提醒任务。
+
+        trigger_type 为 date、cron 或 interval。
+        一次性提醒必须使用 date + run_date ISO 时间，例如“1分钟后提醒我吃饭”“过10分钟提醒我”“明天9点提醒我”。
+        只有用户明确表达“每隔/每/循环/重复/周期性”时，才使用 interval 或 cron。
+        """
         return schedule_service.create_task(
             user_id=user_id,
             agent_id=agent_id,

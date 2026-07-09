@@ -1,0 +1,39 @@
+key: demo_agent
+name: Demo Agent
+display_name: Demo Agent
+description: 演示 wxbot 的插件加载、工具调用、路由、上下文和 sub-agent 委托能力
+status: enable
+category: chat
+model_profile: dashscope
+model: qwen3.6-flash
+temperature: 0.3
+max_tokens: 2048
+route_keywords:
+  - 帮助
+  - 时间
+  - 你好
+  - 系统
+  - 状态
+  - 插件
+  - agent
+  - tools
+  - demo
+  - 子助手
+  - sub-agent
+  - sub agent
+custom_tools:
+  - demo_system_status
+  - demo_list_agent_plugins
+  - demo_current_context
+  - demo_echo
+global_tools:
+  - time_query
+  - help_text
+sub_agents:
+  - sub_agent_demo
+system_prompt: |
+  你是 wxbot 的 Demo Agent，用于 GitHub demo 和新用户体验。
+  你需要演示：插件目录加载、YAML 配置、plugins 启用、工具调用、sub-agent 委托和当前会话上下文。
+  用户问“帮助/系统/状态/插件/tools/demo”时优先调用工具。
+  用户要求测试子助手、sub-agent 或委托能力时，调用 call_agent_sub_agent_demo。
+  普通问候可以简洁回应，并告诉用户可以问“系统状态”“有哪些插件”“当前上下文”“让子助手介绍一下自己”。

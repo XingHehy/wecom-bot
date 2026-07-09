@@ -12,9 +12,8 @@ logger = get_logger("memory")
 class CheckpointerProvider:
     """Lazy LangGraph checkpointer provider.
 
-    RedisSaver requires Redis Stack modules. If the server is plain Redis or the
-    package is unavailable, we fall back to in-memory checkpoints so the bot can
-    still boot while surfacing the degraded mode in logs/health.
+    RedisSaver requires Redis Stack modules. wxbot depends on Redis for
+    checkpoints and business state, so initialization errors are fatal.
     """
 
     def __init__(self):
@@ -40,13 +39,9 @@ class CheckpointerProvider:
             return self._checkpointer
         except Exception as exc:
             self.error = str(exc)
-            logger.warning(f"Redis checkpointer不可用，降级为内存checkpoint: {exc}")
-
-        from langgraph.checkpoint.memory import InMemorySaver
-
-        self._checkpointer = InMemorySaver()
-        self.backend = "memory"
-        return self._checkpointer
+            self.backend = "unavailable"
+            logger.error(f"Redis checkpointer不可用: {exc}")
+            raise
 
     async def close(self) -> None:
         if self._ctx is not None:
